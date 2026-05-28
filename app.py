@@ -1,72 +1,71 @@
 import streamlit as st
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+import subprocess
+import os
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-import whisper
-import os
 
-st.set_page_config(page_title="YouTube AI Video Editor", layout="centered")
-st.title("🎥 AI Video Editor + Sound Enhancer")
-st.markdown("### Upload raw video → Get professional YouTube ready video")
+st.set_page_config(page_title="YouTube AI Editor", layout="wide")
+st.title("🎥 Online AI Video Editor + Sound Enhancer")
+st.markdown("**Upload → Auto Sound Enhancement & Basic Editing**")
 
-uploaded_file = st.file_uploader("Upload your video (max 100MB recommended)", 
-                                type=["mp4", "mov", "avi", "mkv"])
+uploaded_file = st.file_uploader("Upload your raw video", 
+                                type=["mp4", "mov", "avi", "mkv"], 
+                                help="Recommended: under 5 minutes for free tier")
 
 if uploaded_file is not None:
-    # Save uploaded file
-    with open("input_video.mp4", "wb") as f:
+    input_path = "input_video.mp4"
+    with open(input_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
     
-    st.success("Video uploaded successfully!")
-    st.video("input_video.mp4")
+    st.success("✅ Video uploaded successfully!")
+    st.video(input_path)
 
-    if st.button("🚀 Start AI Editing & Sound Enhancement", type="primary"):
-        with st.spinner("Processing... This may take 3-10 minutes depending on video length"):
-            
+    if st.button("🚀 Start AI Sound Enhancement & Editing", type="primary"):
+        with st.spinner("Processing audio enhancement... (please wait)"):
             try:
-                # === Sound Enhancement ===
-                st.write("🔊 Enhancing Audio...")
-                audio = AudioSegment.from_file("input_video.mp4")
-                # Remove silence and normalize
-                chunks = split_on_silence(audio, min_silence_len=600, silence_thresh=-40)
-                processed_audio = sum(chunks)
-                processed_audio = processed_audio.normalize().effects.normalize()
-                processed_audio.export("enhanced_audio.wav", format="wav")
-
-                # === Transcription ===
-                st.write("📝 Transcribing video...")
-                model = whisper.load_model("base")
-                result = model.transcribe("input_video.mp4")
-                st.write("**Transcript Preview:**", result["text"][:400] + "...")
-
-                # === Video Processing (Basic version) ===
-                st.write("✂️ Editing video...")
-                video = VideoFileClip("input_video.mp4")
-                final_video = video  # You can improve this later with cuts
+                # Sound Enhancement
+                audio = AudioSegment.from_file(input_path)
+                chunks = split_on_silence(audio, 
+                                        min_silence_len=500, 
+                                        silence_thresh=-40, 
+                                        keep_silence=250)
                 
-                # Add enhanced audio
-                final_video = final_video.set_audio(VideoFileClip("input_video.mp4").audio)
+                enhanced = sum(chunks)
+                enhanced = enhanced.normalize()
+                enhanced.export("enhanced_audio.wav", format="wav")
 
-                final_video.write_videofile("final_edited_video.mp4", 
-                                          fps=24, 
-                                          codec="libx264", 
-                                          audio_codec="aac",
-                                          threads=4)
+                output_path = "AI_Edited_Video.mp4"
 
-                st.success("✅ Processing Complete!")
-                st.video("final_edited_video.mp4")
+                # Merge with FFmpeg
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', input_path,
+                    '-i', 'enhanced_audio.wav',
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-shortest',
+                    output_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
 
-                # Download button
-                with open("final_edited_video.mp4", "rb") as file:
-                    st.download_button(
-                        label="⬇️ Download Your Edited Video",
-                        data=file,
-                        file_name="AI_Edited_YouTube_Video.mp4",
-                        mime="video/mp4"
-                    )
-                    
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    st.success("✅ Processing Completed Successfully!")
+                    st.video(output_path)
+
+                    with open(output_path, "rb") as file:
+                        st.download_button(
+                            label="⬇️ Download Final Video",
+                            data=file,
+                            file_name="AI_Edited_YouTube_Video.mp4",
+                            mime="video/mp4"
+                        )
+                else:
+                    st.error("Processing failed. Check logs.")
+                    st.text(result.stderr)
+
             except Exception as e:
                 st.error(f"Error: {str(e)}")
-                st.info("Try with a shorter video (under 5 minutes)")
+                st.info("Try a very short video (1-3 minutes)")
 
-st.caption("Your Personal Online AI Video Editing Agent")
+st.caption("Your Online AI Video Editing Agent")
