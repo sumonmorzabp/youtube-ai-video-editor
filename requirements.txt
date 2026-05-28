@@ -1,0 +1,7 @@
+streamlit
+moviepy
+pydub
+whisper
+openai
+ffmpeg-python
+yt-dlp
